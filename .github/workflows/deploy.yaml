@@ -1,0 +1,23 @@
+name: Deploy
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main  
+jobs:
+  runs-on: ubuntu-latest  
+  deploy: 
+    name: Deploy to Cloud Run
+    if: github.event.pull_request.merged
+    uses: google-github-actions/deploy-cloudrun@v0.2.0
+    with:
+      service: ${{ env.SERVICE }}
+      image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE }}
+      region: ${{ env.REGION }}
+      credentials: ${{ secrets.GCP_SA_KEY }}
+      env_vars: NAME="Hello World",TEST={{secrets.NEWTEST}}
+  
+  test-deploy:
+    needs: ["deploy"]
+    run: curl "${{ steps.deploy.outputs.url }}"    
