@@ -7,17 +7,48 @@ on:
       - main  
 jobs:
   runs-on: ubuntu-latest  
-  deploy: 
+  deploy-dev: 
     name: Deploy to Cloud Run
     if: github.event.pull_request.merged
     uses: google-github-actions/deploy-cloudrun@v0.2.0
     with:
       service: ${{ env.SERVICE }}
-      image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE }}
+      image:  eu.gcr.io/${{secrets.GCP_PROJECT}}/$GITHUB_REPOSITORY-dev:0.1.$GITHUB_RUN_ID
+      region: ${{ env.REGION }}
+      credentials: ${{ secrets.GCP_SA_KEY }}
+      env_vars: NAME="Hello World",TEST=${{secrets.NEWTEST}}
+  
+  test-deploy-dev:
+    needs: ["deploy-dev"]
+    run: curl "${{ steps.deploy-dev.outputs.url }}"
+
+    runs-on: ubuntu-latest  
+
+  deploy-release: 
+    name: Deploy to Cloud Run
+    if: github.event.pull_request.merged
+    uses: google-github-actions/deploy-cloudrun@v0.2.0
+    with:
+      service: ${{ env.SERVICE }}
+      image:  eu.gcr.io/${{secrets.GCP_PROJECT}}/$GITHUB_REPOSITORY-dev:0.1.$GITHUB_RUN_ID
       region: ${{ env.REGION }}
       credentials: ${{ secrets.GCP_SA_KEY }}
       env_vars: NAME="Hello World",TEST={{secrets.NEWTEST}}
   
-  test-deploy:
-    needs: ["deploy"]
-    run: curl "${{ steps.deploy.outputs.url }}"    
+  test-deploy-release:
+    needs: ["deploy-release"]
+    run: curl "${{ steps.deploy-release.outputs.url }}"  
+
+  k6_load_test:
+    needs: ["test-deploy-release"]
+    name: k6 Load Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+      - name: Run local k6 test
+        uses: k6io/action@v0.1
+        env:
+          TEST_URL: "${{ steps.deploy-release.outputs.url }}"
+        with:
+          filename: k6loadtest.js
